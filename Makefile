@@ -1,6 +1,6 @@
 .PHONY: build
 build:
-	go build -o zgit main.go
+	GOOS=linux GOARCH=amd64 go build -o zgit main.go
 
 .PHONY: ci
 ci:
