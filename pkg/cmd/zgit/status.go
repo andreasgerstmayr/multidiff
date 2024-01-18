@@ -1,16 +1,18 @@
 package zgit
 
 import (
+	"github.com/andreasgerstmayr/multidiff/pkg/cmd/cli"
+	"github.com/andreasgerstmayr/multidiff/pkg/cmd/diff"
 	"github.com/spf13/cobra"
 )
 
-func Status(opts Options) error {
+func Status(opts cli.Options) error {
 	snapshots, err := listSnapshotsAtCwd()
 	if err != nil {
 		return err
 	}
 
-	err = Diff(opts, snapshots[0].Name, "")
+	err = diff.Show(opts, snapshots[0].Name, "")
 	if err != nil {
 		return err
 	}
@@ -19,13 +21,12 @@ func Status(opts Options) error {
 }
 
 func NewStatusCommand() *cobra.Command {
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   "status",
 		Short: "show changes in working copy",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts := cmd.Context().Value(Options{}).(Options)
+			opts := cmd.Context().Value(cli.OptionsKey{}).(cli.Options)
 			return Status(opts)
 		},
 	}
-	return cmd
 }

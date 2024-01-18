@@ -1,110 +1,117 @@
 package zgit
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
+	"time"
 
-	"github.com/bmatcuk/doublestar/v4"
-
-	"github.com/andreasgerstmayr/zgit/pkg/logging"
-	"github.com/andreasgerstmayr/zgit/pkg/zfs"
+	"github.com/andreasgerstmayr/multidiff/pkg/logging"
 )
-
-type Options struct {
-	Verbosity     int
-	DiffTool      string
-	MaxDiffCount  int
-	IgnorePattern string
-}
 
 const (
 	ColorYellow = "\033[93m"
 	ColorEnd    = "\033[0m"
 )
 
+type Snapshot struct {
+	Name     string
+	Used     string
+	Creation time.Time
+}
+
 var log = logging.Logger
 
-func printSnapshotHeader(snapshot zfs.Snapshot) {
+func printSnapshotHeader(snapshot Snapshot) {
 	fmt.Printf("%ssnapshot %s%s\n", ColorYellow, snapshot.Name, ColorEnd)
 	fmt.Printf("Date:    %s\n", snapshot.Creation.Format("Mon Jan 02 15:04:05 2006 -0700"))
 	fmt.Println()
 }
 
-func listSnapshotsAtCwd() ([]zfs.Snapshot, error) {
+func listSnapshotsAtCwd() ([]Snapshot, error) {
 	pwd, err := os.Getwd()
 	if err != nil {
-		return []zfs.Snapshot{}, err
+		return []Snapshot{}, err
 	}
 
-	fs, err := zfs.FindFilesystem(pwd)
+	fs, err := findFilesystem(pwd)
 	if err != nil {
-		return []zfs.Snapshot{}, err
+		return []Snapshot{}, err
 	}
 
-	snapshots, err := zfs.ListSnapshots(fs)
+	snapshots, err := listSnapshots(fs)
 	if err != nil {
-		return []zfs.Snapshot{}, err
+		return []Snapshot{}, err
 	}
 
 	return snapshots, nil
 }
 
-// sometimes zfs diff returns a removal and creation of the same file in the same snapshot
-// mergeDiffs merges these into a single diff with type=modified
-func mergeDiffs(diffs []zfs.SnapshotDiff) []zfs.SnapshotDiff {
-	files := map[string]int{}
+func findFilesystem(path string) (string, error) {
+	args := []string{path}
+	cmd := exec.Command("df", args...)
+	log.V(2).Info("running command", "cmd", "df "+strings.Join(args, " "))
 
-	i := 0
-	for _, diff := range diffs {
-		skip := false
-
-		if diff.Type == "F" {
-			lastDiffIdx, ok := files[diff.Source]
-			if !ok {
-				files[diff.Source] = i
-			} else {
-				lastDiff := diffs[lastDiffIdx]
-				log.V(2).Info("found duplicate occurrence of file in snapshot", "file", diff.Source, "prev", lastDiff.Change, "cur", diff.Change)
-				if diff.Change == "+" && lastDiff.Change == "-" {
-					lastDiff.Change = "M"
-					diffs[lastDiffIdx] = lastDiff
-					skip = true
-				}
-			}
-		}
-
-		if !skip {
-			diffs[i] = diff
-			i++
-		}
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
 	}
-	diffs = diffs[:i]
-	return diffs
+
+	s := string(out)
+	spl := strings.Split(s, "\n")
+	if len(spl) != 3 {
+		return "", fmt.Errorf("invalid output from df: %s", s)
+	}
+
+	fs := strings.Split(spl[1], " ")[0]
+	return fs, nil
 }
 
-func filterDiffs(diffs []zfs.SnapshotDiff, ignorePattern string) []zfs.SnapshotDiff {
-	if ignorePattern == "" {
-		return diffs
+func listSnapshots(fs string) ([]Snapshot, error) {
+	args := []string{
+		"list",
+		"-H",             // do not print header
+		"-t", "snapshot", // show snapshots
+		"-o", "name,used,creation",
+		"-S", "creation", // sort by creation
+		fs,
+	}
+	cmd := exec.Command("zfs", args...)
+	log.V(2).Info("running command", "cmd", "zfs "+strings.Join(args, " "))
+
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
 	}
 
-	i := 0
-	for _, diff := range diffs {
-		skip := false
-
-		if diff.Type == "F" {
-			match, err := doublestar.Match(ignorePattern, diff.Source)
-			if err != nil {
-				log.Error(err, "error matching file pattern")
-			} else {
-				skip = match
-			}
-		}
-
-		if !skip {
-			diffs[i] = diff
-			i++
-		}
+	err = cmd.Start()
+	if err != nil {
+		return nil, err
 	}
-	diffs = diffs[:i]
-	return diffs
+
+	snapshots := []Snapshot{}
+	scanner := bufio.NewScanner(out)
+	for scanner.Scan() {
+		line := scanner.Text()
+		spl := strings.Split(line, "\t")
+		creation, err := time.ParseInLocation("Mon Jan 2  15:04 2006", spl[2], time.Local)
+		if err != nil {
+			return nil, err
+		}
+
+		snapshots = append(snapshots, Snapshot{
+			Name:     spl[0],
+			Used:     spl[1],
+			Creation: creation,
+		})
+	}
+
+	err = cmd.Wait()
+	if err != nil {
+		return nil, err
+	}
+
+	return snapshots, nil
 }

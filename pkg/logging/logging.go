@@ -12,6 +12,7 @@ var Level = zap.NewAtomicLevel()
 func init() {
 	opts := zap.NewDevelopmentConfig()
 	opts.Level = Level
+	opts.OutputPaths = []string{"stdout"}
 
 	zapLogger := zap.Must(opts.Build())
 	Logger = zapr.NewLogger(zapLogger)

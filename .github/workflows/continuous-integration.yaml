@@ -28,5 +28,5 @@ jobs:
     - name: Upload build
       uses: actions/upload-artifact@v3
       with:
-        name: zgit-amd64
-        path: zgit
+        name: multidiff-amd64
+        path: multidiff
