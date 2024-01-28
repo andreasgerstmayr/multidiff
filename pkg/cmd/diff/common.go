@@ -11,8 +11,8 @@ const (
 
 type Diff struct {
 	Change Change
-	Source string
+	Source string // path, not pointing to ZFS snapshot
 	Dest   string
-	PathA  string
-	PathB  string
+	PathA  string // current path on disk, could point to /tank/.zfs/snaphot/...
+	PathB  string // current path on disk, could point to /tank/.zfs/snaphot/...
 }

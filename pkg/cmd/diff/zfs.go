@@ -132,30 +132,8 @@ func diffSnapshots(opts cli.Options, snapshot1 string, snapshot2 string) ([]Diff
 
 		switch diff.Change {
 		case Modified, Renamed:
-			if !opts.ShowMetadataChanges {
-				eq, err := compareModificationTime(diff.PathA, diff.PathB)
-				if err != nil {
-					log.Error(err, "error checking modified time", "a", diff.PathA, "b", diff.PathB)
-				} else if eq {
-					// if modification time is equal, file content was not changed
-					continue
-				}
-			}
-
-			if opts.CompareByteForByte {
-				eq, err := compareFileSize(diff.PathA, diff.PathB)
-				if err != nil {
-					log.Error(err, "error checking file size", "a", diff.PathA, "b", diff.PathB)
-				} else if eq {
-					// if the file size is equal, compare file byte-for-byte
-					eq, err := compareFilesByteForByte(diff.PathA, diff.PathB, 40*1024)
-					if err != nil {
-						log.Error(err, "error comparing files byte-for-byte", "a", diff.PathA, "b", diff.PathB)
-					} else if eq {
-						// file content was not changes
-						continue
-					}
-				}
+			if !isModified(opts, diff.PathA, diff.PathB) {
+				continue
 			}
 		}
 
